@@ -61,56 +61,56 @@ def _split_channels(num_chan, num_groups):
     return split
 
 
-def conv2d_same(
-        x, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, stride: Tuple[int, int] = (1, 1),
-        padding: Tuple[int, int] = (0, 0), dilation: Tuple[int, int] = (1, 1), groups: int = 1):
-    ih, iw = x.size()[-2:]
-    kh, kw = weight.size()[-2:]
-    pad_h = _calc_same_pad(ih, kh, stride[0], dilation[0])
-    pad_w = _calc_same_pad(iw, kw, stride[1], dilation[1])
-    x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
-    return F.conv2d(x, weight, bias, stride, (0, 0), dilation, groups)
+# def conv2d_same(
+#         x, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, stride: Tuple[int, int] = (1, 1),
+#         padding: Tuple[int, int] = (0, 0), dilation: Tuple[int, int] = (1, 1), groups: int = 1):
+#     ih, iw = x.size()[-2:]
+#     kh, kw = weight.size()[-2:]
+#     pad_h = _calc_same_pad(ih, kh, stride[0], dilation[0])
+#     pad_w = _calc_same_pad(iw, kw, stride[1], dilation[1])
+#     x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
+#     return F.conv2d(x, weight, bias, stride, (0, 0), dilation, groups)
 
 
-class Conv2dSame(nn.Conv2d):
-    """ Tensorflow like 'SAME' convolution wrapper for 2D convolutions
-    """
+# class Conv2dSame(nn.Conv2d):
+#     """ Tensorflow like 'SAME' convolution wrapper for 2D convolutions
+#     """
 
-    # pylint: disable=unused-argument
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True):
-        super(Conv2dSame, self).__init__(
-            in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+#     # pylint: disable=unused-argument
+#     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+#                  padding=0, dilation=1, groups=1, bias=True):
+#         super(Conv2dSame, self).__init__(
+#             in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
 
-    def forward(self, x):
-        return conv2d_same(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+#     def forward(self, x):
+#         return conv2d_same(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
 
-class Conv2dSameExport(nn.Conv2d):
-    """ ONNX export friendly Tensorflow like 'SAME' convolution wrapper for 2D convolutions
+# class Conv2dSameExport(nn.Conv2d):
+#     """ ONNX export friendly Tensorflow like 'SAME' convolution wrapper for 2D convolutions
 
-    NOTE: This does not currently work with torch.jit.script
-    """
+#     NOTE: This does not currently work with torch.jit.script
+#     """
 
-    # pylint: disable=unused-argument
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True):
-        super(Conv2dSameExport, self).__init__(
-            in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
-        self.pad = None
-        self.pad_input_size = (0, 0)
+    # # pylint: disable=unused-argument
+    # def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+    #              padding=0, dilation=1, groups=1, bias=True):
+    #     super(Conv2dSameExport, self).__init__(
+    #         in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+    #     self.pad = None
+    #     self.pad_input_size = (0, 0)
 
-    def forward(self, x):
-        input_size = x.size()[-2:]
-        if self.pad is None:
-            pad_arg = _same_pad_arg(input_size, self.weight.size()[-2:], self.stride, self.dilation)
-            self.pad = nn.ZeroPad2d(pad_arg)
-            self.pad_input_size = input_size
+    # def forward(self, x):
+    #     input_size = x.size()[-2:]
+    #     if self.pad is None:
+    #         pad_arg = _same_pad_arg(input_size, self.weight.size()[-2:], self.stride, self.dilation)
+    #         self.pad = nn.ZeroPad2d(pad_arg)
+    #         self.pad_input_size = input_size
 
-        if self.pad is not None:
-            x = self.pad(x)
-        return F.conv2d(
-            x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+    #     if self.pad is not None:
+    #         x = self.pad(x)
+    #     return F.conv2d(
+    #         x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
 
 def get_padding_value(padding, kernel_size, **kwargs):
