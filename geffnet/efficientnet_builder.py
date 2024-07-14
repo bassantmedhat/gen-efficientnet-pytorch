@@ -504,7 +504,7 @@ def _decode_block_str(block_str):
             elif v == 'r6':
                 value = get_act_layer('relu6')
             elif v == 'hs':
-                value = get_act_layer('hard_swish')
+                value = get_act_layer('relu')
             elif v == 'sw':
                 value = get_act_layer('swish')
             else:
