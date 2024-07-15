@@ -154,7 +154,7 @@ class HardSwishJitAutoFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
         ctx.save_for_backward(x)
-        return hard_swish_jit_fwd(x)
+        return torch.relu(x)
 
     @staticmethod
     def backward(ctx, grad_output):
