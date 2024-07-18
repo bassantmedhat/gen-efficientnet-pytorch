@@ -201,6 +201,7 @@ class InvertedResidual(nn.Module):
         mid_chs: int = make_divisible(in_chs * exp_ratio)
         self.has_residual = (in_chs == out_chs and stride == 1) and not noskip
         self.drop_connect_rate = drop_connect_rate
+        self.conv1d= select_conv2d(out_chs*2, out_chs, 1, padding=pad_type, **conv_kwargs)
 
         # Point-wise expansion
         self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type, **conv_kwargs)
@@ -224,9 +225,10 @@ class InvertedResidual(nn.Module):
         self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, **conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
-    def forward(self, x):
-        residual = x
 
+    def forward(self, x):
+        print(self.has_residual)
+        residual = x
         # Point-wise expansion
         x = self.conv_pw(x)
         x = self.bn1(x)
@@ -243,14 +245,25 @@ class InvertedResidual(nn.Module):
         # Point-wise linear projection
         x = self.conv_pwl(x)
         x = self.bn3(x)
+        
 
         if self.has_residual:
             if self.drop_connect_rate > 0.:
                 x = drop_connect(x, self.training, self.drop_connect_rate)
-            x += residual
+            print("hello before workaround "+str(residual.size()) + "  "+ str(x.size()))
+           # x += residual
+            concatenated = torch.cat([x, residual], dim=1)  # Concatenate along the channel dimension
+            print("hello during workaround "+str(concatenated.size()) +"  "+ str(concatenated.type()))
+           # x += residual
+            ch=x.size(1)
+            conv = nn.Conv2d(ch*2, ch, kernel_size=1)
+            x= self.conv1d(concatenated)  # Apply 1x1 convolution
+
+            print("hello after workaround "+str(x.size()))
+
+
+
         return x
-
-
 class CondConvResidual(InvertedResidual):
     """ Inverted residual block w/ CondConv routing"""
 
