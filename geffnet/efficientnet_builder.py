@@ -7,6 +7,7 @@ from copy import deepcopy
 
 from .conv2d_layers import *
 from geffnet.activations import *
+import tltorch
 
 __all__ = ['get_bn_args_tf', 'resolve_bn_args', 'resolve_se_args', 'resolve_act_layer', 'make_divisible',
            'round_channels', 'drop_connect', 'SqueezeExcite', 'ConvBnAct', 'DepthwiseSeparableConv',
@@ -105,9 +106,9 @@ class SqueezeExcite(nn.Module):
     def __init__(self, in_chs, se_ratio=0.25, reduced_base_chs=None, act_layer=nn.ReLU, gate_fn=sigmoid, divisor=1):
         super(SqueezeExcite, self).__init__()
         reduced_chs = make_divisible((reduced_base_chs or in_chs) * se_ratio, divisor)
-        self.conv_reduce = nn.Conv2d(in_chs, reduced_chs, 1, bias=True)
+        self.conv_reduce = tltorch.FactorizedConv.from_conv( nn.Conv2d(in_chs, reduced_chs, 1, bias=True), rank=0.25, decompose_weights=True, factorization='tucker')   
         self.act1 = act_layer(inplace=True)
-        self.conv_expand = nn.Conv2d(reduced_chs, in_chs, 1, bias=True)
+        self.conv_expand = tltorch.FactorizedConv.from_conv( nn.Conv2d(reduced_chs, in_chs, 1, bias=True), rank=0.25, decompose_weights=True, factorization='tucker') 
         self.gate_fn = gate_fn
 
     def forward(self, x):
@@ -194,7 +195,7 @@ class InvertedResidual(nn.Module):
                  stride=1, pad_type='', act_layer=nn.ReLU, noskip=False,
                  exp_ratio=1.0, exp_kernel_size=1, pw_kernel_size=1,
                  se_ratio=0., se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None,
-                 conv_kwargs=None, drop_connect_rate=0.):
+                 conv_kwargs=None, rank=1,drop_connect_rate=0.):
         super(InvertedResidual, self).__init__()
         norm_kwargs = norm_kwargs or {}
         conv_kwargs = conv_kwargs or {}
@@ -204,13 +205,13 @@ class InvertedResidual(nn.Module):
         self.conv1d= select_conv2d(out_chs*2, out_chs, 1, padding=pad_type, **conv_kwargs)
 
         # Point-wise expansion
-        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type, **conv_kwargs)
+        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type,rank=0.25, **conv_kwargs)
         self.bn1 = norm_layer(mid_chs, **norm_kwargs)
         self.act1 = act_layer(inplace=True)
 
         # Depth-wise convolution
         self.conv_dw = select_conv2d(
-            mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True, **conv_kwargs)
+            mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True,rank=0.25, **conv_kwargs)
         self.bn2 = norm_layer(mid_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True)
 
@@ -222,7 +223,7 @@ class InvertedResidual(nn.Module):
             self.se = nn.Identity()  # for jit.script compat
 
         # Point-wise linear projection
-        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, **conv_kwargs)
+        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, rank=0.25,**conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
 
@@ -250,16 +251,16 @@ class InvertedResidual(nn.Module):
         if self.has_residual:
             if self.drop_connect_rate > 0.:
                 x = drop_connect(x, self.training, self.drop_connect_rate)
-            print("hello before workaround "+str(residual.size()) + "  "+ str(x.size()))
+            #print("hello before workaround "+str(residual.size()) + "  "+ str(x.size()))
            # x += residual
             concatenated = torch.cat([x, residual], dim=1)  # Concatenate along the channel dimension
-            print("hello during workaround "+str(concatenated.size()) +"  "+ str(concatenated.type()))
+            #print("hello during workaround "+str(concatenated.size()) +"  "+ str(concatenated.type()))
            # x += residual
             ch=x.size(1)
             conv = nn.Conv2d(ch*2, ch, kernel_size=1)
             x= self.conv1d(concatenated)  # Apply 1x1 convolution
 
-            print("hello after workaround "+str(x.size()))
+            #print("hello after workaround "+str(x.size()))
 
 
 
