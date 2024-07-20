@@ -43,9 +43,8 @@ def _get_padding(kernel_size, stride=1, dilation=1, **_):
     return padding
 
 
-def _calc_same_pad(i, k, s, d):
-    print("updated same pad function")
-    return torch.max(torch.tensor((-(i // -s) - 1) * s + (k - 1) * d + 1 - i), torch.tensor(0))
+def _calc_same_pad(i: int, k: int, s: int, d: int):
+    return max((-(i // -s) - 1) * s + (k - 1) * d + 1 - i, 0)
 
 
 def _same_pad_arg(input_size, kernel_size, stride, dilation):
@@ -141,14 +140,14 @@ def create_conv2d_pad(in_chs, out_chs, kernel_size, **kwargs):
     padding = kwargs.pop('padding', '')
     kwargs.setdefault('bias', False)
     padding, is_dynamic = get_padding_value(padding, kernel_size, **kwargs)
-    # if is_dynamic:
-    #     if is_exportable():
-    #         assert not is_scriptable()
-    #         return Conv2dSameExport(in_chs, out_chs, kernel_size, **kwargs)
-    #     else:
-    #         return Conv2dSame(in_chs, out_chs, kernel_size, **kwargs)
-    # else:
-    return nn.Conv2d(in_chs, out_chs, kernel_size, padding=padding, **kwargs)
+    if is_dynamic:
+        if is_exportable():
+            assert not is_scriptable()
+            return Conv2dSameExport(in_chs, out_chs, kernel_size, **kwargs)
+        else:
+            return Conv2dSame(in_chs, out_chs, kernel_size, **kwargs)
+    else:
+        return nn.Conv2d(in_chs, out_chs, kernel_size, padding=padding, **kwargs)
 
 
 class MixedConv2d(nn.ModuleDict):
