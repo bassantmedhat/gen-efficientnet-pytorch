@@ -55,7 +55,7 @@ class MobileNetV3(nn.Module):
     """
 
     def __init__(self, block_args, num_classes=1000, in_chans=3, stem_size=16, num_features=1280, head_bias=True,
-                 channel_multiplier=1.0, pad_type='', act_layer=HardSwish, drop_rate=0., drop_connect_rate=0.,
+                 channel_multiplier=1.0, pad_type='', act_layer=nn.ReLU, drop_rate=0., drop_connect_rate=0.,
                  se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, weight_init='goog'):
         super(MobileNetV3, self).__init__()
         self.drop_rate = drop_rate
@@ -196,7 +196,7 @@ def _gen_mobilenet_v3(variant, channel_multiplier=1.0, pretrained=False, **kwarg
                 ['cn_r1_k1_s1_c576'],
             ]
         else:
-            act_layer = 'hard_swish'
+            act_layer = 'relu'
             arch_def = [
                 # stage 0, 112x112 in
                 ['ds_r1_k3_s2_e1_c16_se0.25_nre'],  # relu
@@ -232,7 +232,7 @@ def _gen_mobilenet_v3(variant, channel_multiplier=1.0, pretrained=False, **kwarg
                 ['cn_r1_k1_s1_c960'],
             ]
         else:
-            act_layer = 'hard_swish'
+            act_layer = 'relu'
             arch_def = [
                 # stage 0, 112x112 in
                 ['ds_r1_k3_s1_e1_c16_nre'],  # relu
