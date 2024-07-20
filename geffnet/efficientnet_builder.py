@@ -106,9 +106,9 @@ class SqueezeExcite(nn.Module):
     def __init__(self, in_chs, se_ratio=0.25, reduced_base_chs=None, act_layer=nn.ReLU, gate_fn=sigmoid, divisor=1):
         super(SqueezeExcite, self).__init__()
         reduced_chs = make_divisible((reduced_base_chs or in_chs) * se_ratio, divisor)
-        self.conv_reduce = tltorch.FactorizedConv.from_conv( nn.Conv2d(in_chs, reduced_chs, 1, bias=True), rank=0.25, decompose_weights=True, factorization='tucker')   
+        self.conv_reduce = nn.Conv2d(in_chs, reduced_chs, 1, bias=True)
         self.act1 = act_layer(inplace=True)
-        self.conv_expand = tltorch.FactorizedConv.from_conv( nn.Conv2d(reduced_chs, in_chs, 1, bias=True), rank=0.25, decompose_weights=True, factorization='tucker') 
+        self.conv_expand = nn.Conv2d(reduced_chs, in_chs, 1, bias=True)
         self.gate_fn = gate_fn
 
     def forward(self, x):
@@ -205,13 +205,13 @@ class InvertedResidual(nn.Module):
         self.conv1d= select_conv2d(out_chs*2, out_chs, 1, padding=pad_type, **conv_kwargs)
 
         # Point-wise expansion
-        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type,rank=0.25, **conv_kwargs)
+        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type,rank=0.125, **conv_kwargs)
         self.bn1 = norm_layer(mid_chs, **norm_kwargs)
         self.act1 = act_layer(inplace=True)
 
         # Depth-wise convolution
         self.conv_dw = select_conv2d(
-            mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True,rank=0.25, **conv_kwargs)
+        mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True,rank=0.125, **conv_kwargs)
         self.bn2 = norm_layer(mid_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True)
 
@@ -223,7 +223,7 @@ class InvertedResidual(nn.Module):
             self.se = nn.Identity()  # for jit.script compat
 
         # Point-wise linear projection
-        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, rank=0.25,**conv_kwargs)
+        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, rank=0.125,**conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
 
