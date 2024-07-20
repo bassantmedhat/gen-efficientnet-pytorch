@@ -261,6 +261,7 @@ def _gen_mobilenet_v3(variant, channel_multiplier=1.0, pretrained=False, **kwarg
             norm_kwargs=resolve_bn_args(kwargs),
             **kwargs,
         )
+        print("pretrained  "+str(pretrained) )       
         model = _create_model(model_kwargs, variant, pretrained)
     return model
 
