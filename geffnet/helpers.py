@@ -30,8 +30,120 @@ def load_checkpoint(model, checkpoint_path):
         print("=> Error: No checkpoint found at '{}'".format(checkpoint_path))
         raise FileNotFoundError()
 
+def load_pretrained_corrupted(model, url, filter_fn=None, strict=True):
+    if not url:
+        print("=> Warning: Pretrained model URL is empty, using random initialization.")
+        return
+
+    state_dict = load_state_dict_from_url(url, progress=False, map_location='cpu')
+
+    # Handle modified layers
+    modified_layers = ['blocks.1.1.conv1d.weight', 'blocks.1.0.conv1d.weight',
+                       'blocks.2.0.conv1d.weight', 'blocks.2.1.conv1d.weight',
+                       'blocks.3.0.conv1d.weight', 'blocks.3.1.conv1d.weight',
+                       'blocks.4.0.conv1d.weight', 'blocks.4.1.conv1d.weight',
+                       'blocks.4.2.conv1d.weight']  # Add the names of your modified layers here
+
+    input_conv = 'conv_stem'
+    classifier = 'classifier'
+    for layer_name in modified_layers:
+        layer_state_dict = state_dict.get(layer_name, None)
+        if layer_state_dict is not None:
+            # Load weights for modified layers
+            model_dict = model.state_dict()
+            model_dict.update({layer_name + '.' + k: v for k, v in layer_state_dict.items()})
+            model.load_state_dict(model_dict, strict=False)  # Load weights without strict checking
+        else:
+            print(f"=> No pretrained weights found for modified layer: {layer_name}")
+
+    # Handle unchanged layers
+    input_conv_weight = input_conv + '.weight'
+    classifier_weight = classifier + '.weight'
+    in_chans = getattr(model, input_conv).weight.shape[1]
+    pretrained_in_chans = state_dict[input_conv_weight].shape[1]
+    num_classes = getattr(model, classifier).weight.shape[0]
+    pretrained_num_classes = state_dict[classifier_weight].shape[0]
+
+    if in_chans != pretrained_in_chans:
+        if in_chans == 1:
+            print('=> Converting pretrained input conv {} from {} to 1 channel'.format(
+                input_conv_weight, pretrained_in_chans))
+            conv1_weight = state_dict[input_conv_weight]
+            state_dict[input_conv_weight] = conv1_weight.sum(dim=1, keepdim=True)
+        else:
+            print('=> Discarding pretrained input conv {} since input channel count != {}'.format(
+                input_conv_weight, pretrained_in_chans))
+            del state_dict[input_conv_weight]
+            strict = False
+
+    if num_classes != pretrained_num_classes:
+        print('=> Discarding pretrained classifier since num_classes != {}'.format(pretrained_num_classes))
+        del state_dict[classifier_weight]
+        del state_dict[classifier + '.bias']
+        strict = False
+
+    # Load remaining unchanged layers
+    unchanged_layers = set(state_dict.keys()) - set(modified_layers)
+    for layer_name in unchanged_layers:
+        if hasattr(model, layer_name):
+            model_layer = getattr(model, layer_name)
+            if isinstance(model_layer, nn.Module):
+                model_layer.load_state_dict(state_dict[layer_name], strict=False)  # Load weights without strict checking
+            else:
+                print(f"=> Skipping loading pretrained weights for non-module layer: {layer_name}")
+        else:
+            print(f"=> Skipping loading pretrained weights for layer not found in the model: {layer_name}")
+
+    if filter_fn is not None:
+        state_dict = filter_fn(state_dict)
+
+    model.load_state_dict(state_dict, strict=strict)
 
 def load_pretrained(model, url, filter_fn=None, strict=True):
+    modified_layers = ['blocks.1.1.conv1d.weight', 'blocks.1.0.conv1d.weight',
+                       'blocks.2.0.conv1d.weight', 'blocks.2.1.conv1d.weight',
+                       'blocks.3.0.conv1d.weight', 'blocks.3.1.conv1d.weight',
+                       'blocks.4.0.conv1d.weight', 'blocks.4.1.conv1d.weight',
+                       'blocks.4.2.conv1d.weight']  # Add the names of your modified layers here
+    if not url:
+        print("=> Warning: Pretrained model URL is empty, using random initialization.")
+        return
+
+    state_dict = load_state_dict_from_url(url, progress=False, map_location='cpu')
+
+    input_conv = 'conv_stem'
+    classifier = 'classifier'
+    in_chans = getattr(model, input_conv).weight.shape[1]
+    num_classes = getattr(model, classifier).weight.shape[0]
+
+    input_conv_weight = input_conv + '.weight'
+    pretrained_in_chans = state_dict[input_conv_weight].shape[1]
+    if in_chans != pretrained_in_chans:
+        if in_chans == 1:
+            print('=> Converting pretrained input conv {} from {} to 1 channel'.format(
+                input_conv_weight, pretrained_in_chans))
+            conv1_weight = state_dict[input_conv_weight]
+            state_dict[input_conv_weight] = conv1_weight.sum(dim=1, keepdim=True)
+        else:
+            print('=> Discarding pretrained input conv {} since input channel count != {}'.format(
+                input_conv_weight, pretrained_in_chans))
+            del state_dict[input_conv_weight]
+            strict = False
+
+    classifier_weight = classifier + '.weight'
+    pretrained_num_classes = state_dict[classifier_weight].shape[0]
+    if num_classes != pretrained_num_classes:
+        print('=> Discarding pretrained classifier since num_classes != {}'.format(pretrained_num_classes))
+        del state_dict[classifier_weight]
+        del state_dict[classifier + '.bias']
+        strict = False
+
+    if filter_fn is not None:
+        state_dict = filter_fn(state_dict)
+
+    model.load_state_dict(state_dict, strict=False)
+
+def load_pretrained_original(model, url, filter_fn=None, strict=True):
     if not url:
         print("=> Warning: Pretrained model URL is empty, using random initialization.")
         return
