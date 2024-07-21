@@ -10,7 +10,7 @@ from geffnet.activations import *
 
 __all__ = ['get_bn_args_tf', 'resolve_bn_args', 'resolve_se_args', 'resolve_act_layer', 'make_divisible',
            'round_channels', 'drop_connect', 'SqueezeExcite', 'ConvBnAct', 'DepthwiseSeparableConv',
-           'InvertedResidual', 'CondConvResidual', 'EdgeResidual', 'EfficientNetBuilder', 'decode_arch_def',
+           'InvertedResidual_n', 'CondConvResidual', 'EdgeResidual', 'EfficientNetBuilder', 'decode_arch_def',
            'initialize_weight_default', 'initialize_weight_goog', 'BN_MOMENTUM_TF_DEFAULT', 'BN_EPS_TF_DEFAULT'
 ]
 
@@ -187,15 +187,15 @@ class DepthwiseSeparableConv(nn.Module):
         return x
 
 
-class InvertedResidual(nn.Module):
+class InvertedResidual_n(nn.Module):
     """ Inverted residual block w/ optional SE"""
 
     def __init__(self, in_chs, out_chs, dw_kernel_size=3,
                  stride=1, pad_type='', act_layer=nn.ReLU, noskip=False,
                  exp_ratio=1.0, exp_kernel_size=1, pw_kernel_size=1,
                  se_ratio=0., se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None,
-                 conv_kwargs=None, rank=1,drop_connect_rate=0.):
-        super(InvertedResidual, self).__init__()
+                 conv_kwargs=None, drop_connect_rate=0.):
+        super(InvertedResidual_n, self).__init__()
         norm_kwargs = norm_kwargs or {}
         conv_kwargs = conv_kwargs or {}
         mid_chs: int = make_divisible(in_chs * exp_ratio)
@@ -204,13 +204,13 @@ class InvertedResidual(nn.Module):
         self.conv1d= select_conv2d(out_chs*2, out_chs, 1, padding=pad_type, **conv_kwargs)
 
         # Point-wise expansion
-        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type,rank=0.25, **conv_kwargs)
+        self.conv_pw = select_conv2d(in_chs, mid_chs, exp_kernel_size, padding=pad_type, **conv_kwargs)
         self.bn1 = norm_layer(mid_chs, **norm_kwargs)
         self.act1 = act_layer(inplace=True)
 
         # Depth-wise convolution
         self.conv_dw = select_conv2d(
-            mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True,rank=0.25, **conv_kwargs)
+            mid_chs, mid_chs, dw_kernel_size, stride=stride, padding=pad_type, depthwise=True, **conv_kwargs)
         self.bn2 = norm_layer(mid_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True)
 
@@ -222,12 +222,12 @@ class InvertedResidual(nn.Module):
             self.se = nn.Identity()  # for jit.script compat
 
         # Point-wise linear projection
-        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, rank=0.25,**conv_kwargs)
+        self.conv_pwl = select_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, **conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
 
     def forward(self, x):
-        print(self.has_residual)
+        # print(self.has_residual)
         residual = x
         # Point-wise expansion
         x = self.conv_pw(x)
@@ -250,23 +250,21 @@ class InvertedResidual(nn.Module):
         if self.has_residual:
             if self.drop_connect_rate > 0.:
                 x = drop_connect(x, self.training, self.drop_connect_rate)
-            #print("hello before workaround "+str(residual.size()) + "  "+ str(x.size()))
+            # print("hello before workaround "+str(residual.size()) + "  "+ str(x.size()))
            # x += residual
             concatenated = torch.cat([x, residual], dim=1)  # Concatenate along the channel dimension
-            #print("hello during workaround "+str(concatenated.size()) +"  "+ str(concatenated.type()))
+            # print("hello during workaround "+str(concatenated.size()) +"  "+ str(concatenated.type()))
            # x += residual
             ch=x.size(1)
             conv = nn.Conv2d(ch*2, ch, kernel_size=1)
             x= self.conv1d(concatenated)  # Apply 1x1 convolution
 
-            #print("hello after workaround "+str(x.size()))
+            # print("hello after workaround "+str(x.size()))
 
 
 
         return x
-
-
-class CondConvResidual(InvertedResidual):
+class CondConvResidual(InvertedResidual_n):
     """ Inverted residual block w/ CondConv routing"""
 
     def __init__(self, in_chs, out_chs, dw_kernel_size=3,
@@ -419,7 +417,7 @@ class EfficientNetBuilder:
             if ba.get('num_experts', 0) > 0:
                 block = CondConvResidual(**ba)
             else:
-                block = InvertedResidual(**ba)
+                block = InvertedResidual_n(**ba)
         elif bt == 'ds' or bt == 'dsa':
             ba['drop_connect_rate'] = self.drop_connect_rate * self.block_idx / self.block_count
             ba['se_kwargs'] = self.se_kwargs
@@ -519,7 +517,7 @@ def _decode_block_str(block_str):
             elif v == 'r6':
                 value = get_act_layer('relu6')
             elif v == 'hs':
-                value = get_act_layer('hard_swish')
+                value = get_act_layer('relu')
             elif v == 'sw':
                 value = get_act_layer('swish')
             else:
