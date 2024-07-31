@@ -81,9 +81,14 @@ class Conv2dSame(nn.Conv2d):
                  padding=0, dilation=1, groups=1, bias=True):
         super(Conv2dSame, self).__init__(
             in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x):
-        return conv2d_same(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        in_x = self.dequant(x)
+        output = conv2d_same(in_x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        output = self.quant(output)
+        return output
 
 
 class Conv2dSameExport(nn.Conv2d):
@@ -99,6 +104,8 @@ class Conv2dSameExport(nn.Conv2d):
             in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
         self.pad = None
         self.pad_input_size = (0, 0)
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x):
         input_size = x.size()[-2:]
@@ -109,8 +116,11 @@ class Conv2dSameExport(nn.Conv2d):
 
         if self.pad is not None:
             x = self.pad(x)
-        return F.conv2d(
-            x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        in_x = self.dequant(x)
+        output = conv2d_same(in_x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        output = self.quant(output)
+        return output
+
 
 
 def get_padding_value(padding, kernel_size, **kwargs):
@@ -266,24 +276,6 @@ class CondConv2d(nn.Module):
                 x, weight, bias, stride=self.stride, padding=self.padding,
                 dilation=self.dilation, groups=self.groups * B)
         out = out.permute([1, 0, 2, 3]).view(B, self.out_channels, out.shape[-2], out.shape[-1])
-
-        # Literal port (from TF definition)
-        # x = torch.split(x, 1, 0)
-        # weight = torch.split(weight, 1, 0)
-        # if self.bias is not None:
-        #     bias = torch.matmul(routing_weights, self.bias)
-        #     bias = torch.split(bias, 1, 0)
-        # else:
-        #     bias = [None] * B
-        # out = []
-        # for xi, wi, bi in zip(x, weight, bias):
-        #     wi = wi.view(*self.weight_shape)
-        #     if bi is not None:
-        #         bi = bi.view(*self.bias_shape)
-        #     out.append(self.conv_fn(
-        #         xi, wi, bi, stride=self.stride, padding=self.padding,
-        #         dilation=self.dilation, groups=self.groups))
-        # out = torch.cat(out, 0)
         return out
 
 
